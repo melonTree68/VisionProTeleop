@@ -109,7 +109,6 @@ struct StatusOverlay: View {
     @ObservedObject private var calibrationManager = CameraCalibrationManager.shared
     @ObservedObject private var extrinsicCalibrationManager = ExtrinsicCalibrationManager.shared
     @ObservedObject private var cloudStorageSettings = CloudStorageSettings.shared
-    @ObservedObject private var signalingClient = SignalingClient.shared
     
     // App mode persistence
     @AppStorage("appMode") private var appMode: AppMode = .teleop
@@ -210,25 +209,10 @@ struct StatusOverlay: View {
                 let wasPythonConnected = pythonConnected
                 let wasWebrtcConnected = webrtcConnected
                 
-                // Check for Python connection via either local gRPC or remote signaling
-                let localPythonConnected = DataManager.shared.pythonClientIP != nil
-                let remotePythonConnected = signalingClient.peerConnected
-                
-                if localPythonConnected {
-                    pythonConnected = true
-                    pythonIP = DataManager.shared.pythonClientIP ?? "Connected"
-                } else if remotePythonConnected {
-                    pythonConnected = true
-                    pythonIP = "Remote (\(signalingClient.roomCode))"
-                } else {
-                    pythonConnected = false
-                    pythonIP = "Not connected"
-                }
-                
-                // Check for WebRTC connection via either local or remote
-                let localWebrtcConnected = DataManager.shared.webrtcServerInfo != nil
-                webrtcConnected = localWebrtcConnected || remotePythonConnected
-                
+                pythonConnected = DataManager.shared.pythonClientIP != nil
+                pythonIP = DataManager.shared.pythonClientIP ?? "Not connected"
+                webrtcConnected = DataManager.shared.webrtcServerInfo != nil
+
                 // Toggle trigger to force MuJoCo status update
                 mujocoStatusUpdateTrigger.toggle()
                 
@@ -707,56 +691,21 @@ struct StatusOverlay: View {
 
     private var networkInfoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Side-by-side layout: Local Network | Remote
-            HStack(alignment: .top, spacing: 20) {
-                // LEFT: Local Network (IP Addresses)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "wifi")
-                            .font(.system(size: 12))
-                            .foregroundColor(.blue.opacity(0.8))
-                        Text("Local Network")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.6))
+            HStack(spacing: 16) {
+                ForEach(ipAddresses, id: \.address) { ip in
+                    HStack(spacing: 6) {
+                        Text(ip.name)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text(ip.address)
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.white)
                     }
-                    
-                    ForEach(ipAddresses, id: \.address) { ip in
-                        HStack(spacing: 8) {
-                            Text(ip.name)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.5))
-                                .frame(width: 45, alignment: .trailing)
-                            Text(ip.address)
-                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.white)
-                        }
-                    }
-                }
-                
-                // Vertical Divider
-                Rectangle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 1, height: 60)
-                
-                // RIGHT: Remote (Room Code)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "globe")
-                            .font(.system(size: 12))
-                            .foregroundColor(.cyan.opacity(0.8))
-                        Text("Remote")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    
-                    Text(signalingClient.roomCode)
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundColor(.cyan)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
-            
-            // Connection status cards - show when Python connected via either method
+
+            // Local connection status cards
             HStack(spacing: 8) {
                 // Python connection card (local gRPC)
                 connectionStatusCard(
@@ -879,42 +828,6 @@ struct StatusOverlay: View {
                 .fontWeight(.medium)
                 .foregroundColor(.white.opacity(0.6))
                 .frame(width: 14, alignment: .leading)
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
-        }
-    }
-    
-    private var teleopInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Info description
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.5))
-                
-                Text("Requires a Python client to receive hand tracking data and stream back:")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            
-            // Capabilities list
-            HStack(spacing: 16) {
-                capabilityRow(icon: "video.fill", text: "Video")
-                capabilityRow(icon: "waveform", text: "Audio")
-                capabilityRow(icon: "cube.transparent", text: "Sim states")
-            }
-            .padding(.leading, 26) // Align with text above
-        }
-    }
-    
-    private func capabilityRow(icon: String, text: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
-                .frame(width: 14)
             Text(text)
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.8))
@@ -1356,15 +1269,11 @@ struct StatusOverlay: View {
             Divider()
                 .background(Color.white.opacity(0.3))
             
-            // Info sections
-            if appMode == .teleop {
-                teleopInfoSection
-            } else if appMode == .egorecord {
+            if appMode == .egorecord {
                 egorecordInfoSection
+                Divider()
+                    .background(Color.white.opacity(0.3))
             }
-            
-            Divider()
-                .background(Color.white.opacity(0.3))
             
             // Mode toggle (between info sections and network info)
             HStack {
