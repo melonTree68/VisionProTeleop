@@ -47,7 +47,8 @@ class NetworkInfoManager: ObservableObject {
 /// Enum to track which settings panel is currently expanded
 enum ExpandedPanel: Equatable {
     case none
-    case settings  // Shows the settings menu (Layer 2)
+    case settings  // Frequently used settings
+    case moreSettings  // Remaining settings categories
     case videoSource
     case viewControls
     case recording
@@ -1547,7 +1548,7 @@ struct StatusOverlay: View {
                 if expandedPanel != .settings {
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            expandedPanel = .settings
+                            expandedPanel = expandedPanel == .moreSettings ? .settings : .moreSettings
                             previewZDistance = nil
                             previewActive = false
                             previewStatusPosition = nil
@@ -1602,6 +1603,8 @@ struct StatusOverlay: View {
             // Panel content - either menu or specific settings
             if expandedPanel == .settings {
                 settingsMenuContent
+            } else if expandedPanel == .moreSettings {
+                moreSettingsMenuContent
             } else {
                 settingsDetailContent
             }
@@ -1616,6 +1619,51 @@ struct StatusOverlay: View {
     // MARK: - Settings Menu Content
     
     private var settingsMenuContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Toggle(isOn: $dataManager.showHandJoints) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hand Tracking")
+                        .font(.subheadline.weight(.medium))
+                    Text("Enable Skeleton Overlay")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+            .tint(.orange)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Skeleton Opacity")
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(Int(dataManager.handJointsOpacity * 100))%")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundColor(.orange)
+                }
+                Slider(value: $dataManager.handJointsOpacity, in: 0.1...1.0, step: 0.05)
+                    .tint(.orange)
+            }
+            .disabled(!dataManager.showHandJoints)
+            .opacity(dataManager.showHandJoints ? 1.0 : 0.5)
+
+            Divider()
+                .background(Color.white.opacity(0.2))
+
+            menuItem(
+                icon: "slider.horizontal.3",
+                title: "More Settings",
+                subtitle: nil,
+                isExpanded: false,
+                accentColor: .blue
+            ) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    expandedPanel = .moreSettings
+                }
+            }
+        }
+    }
+
+    private var moreSettingsMenuContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Video Source menu item (only in video mode)
             if showVideoStatus {
@@ -1640,7 +1688,7 @@ struct StatusOverlay: View {
                     accentColor: .blue
                 ) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        expandedPanel = expandedPanel == .viewControls ? .settings : .viewControls
+                        expandedPanel = expandedPanel == .viewControls ? .moreSettings : .viewControls
                     }
                 }
                 
@@ -1653,7 +1701,7 @@ struct StatusOverlay: View {
                     accentColor: .purple
                 ) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        expandedPanel = expandedPanel == .statusPosition ? .settings : .statusPosition
+                        expandedPanel = expandedPanel == .statusPosition ? .moreSettings : .statusPosition
                     }
                 }
             }
@@ -1695,12 +1743,12 @@ struct StatusOverlay: View {
                     .background(Color.white.opacity(0.2))
                 
                 // Visualizations
-                let activeCount = [dataManager.upperLimbVisible, dataManager.showHeadBeam, dataManager.showHandJoints].filter { $0 }.count
+                let activeCount = [dataManager.upperLimbVisible, dataManager.showHeadBeam].filter { $0 }.count
                 
                 menuItem(
                     icon: "eye.fill",
                     title: "Visualizations",
-                    subtitle: "\(activeCount)/3 active",
+                    subtitle: "\(activeCount)/2 active",
                     isExpanded: false,
                     accentColor: .cyan
                 ) {
@@ -1828,7 +1876,7 @@ struct StatusOverlay: View {
                 } else {
                     EmptyView()
                 }
-            case .settings, .none:
+            case .settings, .moreSettings, .none:
                 EmptyView()
             }
         }
@@ -1837,6 +1885,7 @@ struct StatusOverlay: View {
     private var panelTitle: String {
         switch expandedPanel {
         case .settings: return "Settings"
+        case .moreSettings: return "More Settings"
         case .videoSource: return "Video Source"
         case .viewControls: return "Video Plane"
         case .recording: return "Recording"
@@ -2998,57 +3047,9 @@ struct StatusOverlay: View {
                 accentColor: .yellow
             )
             
-            Divider()
-                .background(Color.white.opacity(0.15))
-            
-            // Hand Joints toggle
-            visualizationToggleRow(
-                icon: dataManager.showHandJoints ? "circle.grid.3x3.fill" : "circle.grid.3x3",
-                title: "Hand Tracking",
-                description: "Shows small spheres at each of the 27 tracked hand joints. Useful for debugging finger tracking accuracy.",
-                isOn: $dataManager.showHandJoints,
-                accentColor: .orange
-            )
-            
-            // Hand Joints Opacity slider (always shown, disabled when hand tracking is off)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "circle.lefthalf.filled")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(dataManager.showHandJoints ? .orange.opacity(0.7) : .white.opacity(0.3))
-                        .frame(width: 28)
-                    
-                    Text("Skeleton Opacity")
-                        .font(.subheadline)
-                        .foregroundColor(dataManager.showHandJoints ? .white.opacity(0.9) : .white.opacity(0.4))
-                    
-                    Spacer()
-                    
-                    Text("\(Int(dataManager.handJointsOpacity * 100))%")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(dataManager.showHandJoints ? .orange : .white.opacity(0.3))
-                        .frame(width: 50, alignment: .trailing)
-                }
-                
-                Slider(
-                    value: Binding(
-                        get: { Double(dataManager.handJointsOpacity) },
-                        set: { dataManager.handJointsOpacity = Float($0) }
-                    ),
-                    in: 0.1...1.0,
-                    step: 0.05
-                )
-                .tint(dataManager.showHandJoints ? .orange : .gray)
-                .disabled(!dataManager.showHandJoints)
-                .frame(height: 30)
-                .padding(.leading, 36)
-            }
-            .padding(.top, 8)
-            .opacity(dataManager.showHandJoints ? 1.0 : 0.5)
         }
     }
-    
+
     private func visualizationToggleRow(icon: String, title: String, description: String, isOn: Binding<Bool>, accentColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -3083,32 +3084,10 @@ struct StatusOverlay: View {
     private var handTrackingPanelContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Description
-            Text("Configure hand tracking settings. Enable skeleton overlay and adjust prediction to reduce perceived latency.")
+            Text("Adjust hand prediction to reduce perceived latency.")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
-            
-            Divider()
-                .background(Color.white.opacity(0.2))
-            
-            // Enable Skeleton Overlay toggle
-            Toggle(isOn: $dataManager.showHandJoints) {
-                HStack(spacing: 10) {
-                    Image(systemName: dataManager.showHandJoints ? "hand.raised.fingers.spread.fill" : "hand.raised.fingers.spread")
-                        .font(.system(size: 18))
-                        .foregroundColor(dataManager.showHandJoints ? .orange : .white.opacity(0.6))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Skeleton Overlay")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                        Text("Visualize 27 hand joints as spheres with bone connections")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-            }
-            .tint(.orange)
             
             Divider()
                 .background(Color.white.opacity(0.2))
@@ -3197,35 +3176,9 @@ struct StatusOverlay: View {
                 .cornerRadius(10)
             }
             
-            Divider()
-                .background(Color.white.opacity(0.2))
-            
-            // Opacity slider
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "circle.lefthalf.filled")
-                        .font(.system(size: 16))
-                        .foregroundColor(.orange.opacity(0.8))
-                    Text("Skeleton Opacity")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                    Spacer()
-                    Text("\(Int(dataManager.handJointsOpacity * 100))%")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.orange)
-                }
-                
-                Slider(
-                    value: $dataManager.handJointsOpacity,
-                    in: 0.1...1.0,
-                    step: 0.05
-                )
-                .tint(.orange)
-            }
         }
     }
-    
+
     // MARK: - Stereo Baseline Panel
     
     private var stereoBaselinePanelContent: some View {
