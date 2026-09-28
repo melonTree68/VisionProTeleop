@@ -1611,31 +1611,105 @@ struct StatusOverlay: View {
     
     private var settingsMenuContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("Visualizations")
+                .font(.headline)
+                .foregroundColor(.white)
+
+            // Hand Joints toggle
+            visualizationToggleRow(
+                icon: dataManager.showHandJoints ? "circle.grid.3x3.fill" : "circle.grid.3x3",
+                title: "Hand Tracking",
+                description: "Shows small spheres at each of the 27 tracked hand joints. Useful for debugging finger tracking accuracy.",
+                isOn: $dataManager.showHandJoints,
+                accentColor: .orange
+            )
+
+            // Hand Joints Opacity slider (always shown, disabled when hand tracking is off)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(dataManager.showHandJoints ? .orange.opacity(0.7) : .white.opacity(0.3))
+                        .frame(width: 28)
+
+                    Text("Skeleton Opacity")
+                        .font(.subheadline)
+                        .foregroundColor(dataManager.showHandJoints ? .white.opacity(0.9) : .white.opacity(0.4))
+
+                    Spacer()
+
+                    Text("\(Int(dataManager.handJointsOpacity * 100))%")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(dataManager.showHandJoints ? .orange : .white.opacity(0.3))
+                        .frame(width: 50, alignment: .trailing)
+                }
+
+                Slider(
+                    value: Binding(
+                        get: { Double(dataManager.handJointsOpacity) },
+                        set: { dataManager.handJointsOpacity = Float($0) }
+                    ),
+                    in: 0.1...1.0,
+                    step: 0.05
+                )
+                .tint(dataManager.showHandJoints ? .orange : .gray)
+                .disabled(!dataManager.showHandJoints)
+                .frame(height: 30)
+                .padding(.leading, 36)
+            }
+            .padding(.top, 8)
+            .opacity(dataManager.showHandJoints ? 1.0 : 0.5)
+
+            Divider()
+                .background(Color.white.opacity(0.2))
+
+            Text("Hand Tracking")
+                .font(.headline)
+                .foregroundColor(.white)
+
+            // Enable Skeleton Overlay toggle
             Toggle(isOn: $dataManager.showHandJoints) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Hand Tracking")
-                        .font(.subheadline.weight(.medium))
-                    Text("Enable Skeleton Overlay")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.6))
+                HStack(spacing: 10) {
+                    Image(systemName: dataManager.showHandJoints ? "hand.raised.fingers.spread.fill" : "hand.raised.fingers.spread")
+                        .font(.system(size: 18))
+                        .foregroundColor(dataManager.showHandJoints ? .orange : .white.opacity(0.6))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Skeleton Overlay")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                        Text("Visualize 27 hand joints as spheres with bone connections")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
                 }
             }
             .tint(.orange)
 
+            // Opacity slider
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 16))
+                        .foregroundColor(.orange.opacity(0.8))
                     Text("Skeleton Opacity")
                         .font(.subheadline)
+                        .foregroundColor(.white)
                     Spacer()
                     Text("\(Int(dataManager.handJointsOpacity * 100))%")
-                        .font(.subheadline.monospacedDigit())
+                        .font(.subheadline)
+                        .fontWeight(.medium)
                         .foregroundColor(.orange)
                 }
-                Slider(value: $dataManager.handJointsOpacity, in: 0.1...1.0, step: 0.05)
-                    .tint(.orange)
+
+                Slider(
+                    value: $dataManager.handJointsOpacity,
+                    in: 0.1...1.0,
+                    step: 0.05
+                )
+                .tint(.orange)
             }
-            .disabled(!dataManager.showHandJoints)
-            .opacity(dataManager.showHandJoints ? 1.0 : 0.5)
 
             Divider()
                 .background(Color.white.opacity(0.2))
