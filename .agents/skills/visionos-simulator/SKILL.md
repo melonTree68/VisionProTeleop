@@ -11,6 +11,12 @@ The app now opens the combined streaming space automatically. Verify the trackin
 
 For a minimal transport smoke test, use the project `avp-teleop` Python environment and load `avp_stream/grpc_msg/handtracking_pb2.py` directly with importlib. Importing the whole `avp_stream` package brings unrelated dependencies. Call `/handtracking.HandTrackingService/StreamHandUpdates` with `channel.unary_stream`, encode discovery as `Head.m00 = 888`, encode 127.0.0.1 in m01/m02/m03/m10, and set m30 to `DataManager.minimumPythonVersionCode`. Receive several responses and cancel. This checks transport and message shape; simulator skeleton data does not validate real tracking.
 
+## String catalog synchronization
+
+`Tracking Streamer/Supporting files/Localizable.xcstrings` is maintained by Xcode extraction. The app target enables `SWIFT_EMIT_LOC_STRINGS = YES` for Debug and Release. To synchronize it after UI changes, back up any existing catalog edits, close Simulator, and build the `VisionProTeleop` scheme with extraction enabled. Command-line builds can emit current `.stringsdata` without updating the source catalog. In that case, use `xcrun xcstringstool sync` with the catalog and `--stringsdata` inputs from the app target’s current `Objects-normal/arm64/Tracking Streamer.SwiftFileList`. Match each input’s `source` field to that list and verify all current sources are covered; exclude stale outputs from removed files. Compile the synchronized catalog with `xcrun xcstringstool compile` into a temporary directory to validate it. A validation build using `SWIFT_EMIT_LOC_STRINGS=NO` cannot confirm that catalog keys are current.
+
+Review the generated diff and compare every existing `localizations` entry with the backup. Native CLI sync can reorder keys; restoring the previous order keeps review focused, provided parsed JSON equality confirms the synchronized content is unchanged. Let Xcode remove obsolete untranslated keys; retain stale translated entries as translation memory. Plain `String` parameters in custom UI helpers, such as `menuItem(title:)`, are outside automatic localized-literal extraction. Catalog synchronization alone does not make those strings localizable; changing their API belongs to a separate localization task.
+
 ## Verified baseline
 
 On 2026-09-28, the updated app built, installed, launched directly into tracking, and displayed en0 and utun4 on the same row. A localhost gRPC smoke test received five updates with 27 joints for each hand and cancelled successfully.
