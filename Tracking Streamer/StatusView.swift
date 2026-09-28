@@ -576,6 +576,8 @@ struct StatusOverlay: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    restartStreamingButton
                 }
             }
             
@@ -599,6 +601,30 @@ struct StatusOverlay: View {
         .background(Color.black.opacity(0.6))
         .cornerRadius(36)
         .fixedSize()
+    }
+
+    private var restartStreamingButton: some View {
+        Button {
+            dataManager.requestStreamingRestart()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.8))
+                    .frame(width: 60, height: 60)
+                if dataManager.isRestartingStream {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(dataManager.isRestartingStream)
+        .accessibilityLabel("Restart Streaming")
+        .help("Restart Streaming")
     }
 
     private var headerSection: some View {
@@ -1334,9 +1360,18 @@ struct StatusOverlay: View {
                 }
             }
             
-            // Settings button - opens Layer 2 settings menu
             Divider()
                 .background(Color.white.opacity(0.3))
+
+            Button {
+                dataManager.requestStreamingRestart()
+            } label: {
+                Label(dataManager.isRestartingStream ? "Restarting Streaming…" : "Restart Streaming", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(dataManager.isRestartingStream)
+
+            // Frequently used settings
             
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

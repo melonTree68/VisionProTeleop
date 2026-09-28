@@ -749,7 +749,8 @@ extension WebRTCClient {
     
     func peerConnection(_ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceConnectionState) {
         dlog("DEBUG: ICE connection state changed to: \(newState.rawValue) (\(iceStateString(newState)))")
-        Task { @MainActor in        
+        Task { @MainActor in
+            guard self.peerConnection === peerConnection else { return }
             if newState == .connected {
                  dlog("✅ [WebRTC] PeerConnection connected!")
                  self.onConnectionStateChanged?(true)

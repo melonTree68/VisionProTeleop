@@ -277,6 +277,16 @@ class UsdzCacheManager: ObservableObject {
 
 class DataManager: ObservableObject {
     static let shared = DataManager()
+
+    @Published var streamingRestartRequest = 0
+    @Published var isRestartingStream = false
+
+    func requestStreamingRestart() {
+        guard !isRestartingStream else { return }
+        isRestartingStream = true
+        streamingRestartRequest += 1
+    }
+
     
     // MARK: - Python Library Version Compatibility
     // Minimum required Python library version (encoded as major*10000 + minor*100 + patch)
@@ -735,9 +745,8 @@ extension GRPCCore.RPCWriter: RPCWriterProtocol {}
 func startServer() {
     dlog("📡 [DEBUG] startServer() - Starting gRPC server setup (grpc-swift-2)...")
     
-    Task {
-        let serverManager = GRPCServerManager()
-        await serverManager.startServer(port: 12345)
+    Task { @MainActor in
+        GRPCServerManager.shared.startServer()
     }
 }
 

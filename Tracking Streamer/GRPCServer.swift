@@ -5,11 +5,20 @@ import QuartzCore
 
 /// Manages the gRPC server for hand tracking using grpc-swift-2
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@MainActor
 final class GRPCServerManager: ObservableObject {
+    static let shared = GRPCServerManager()
+    private var serverTask: Task<Void, Never>?
+
     private var grpcServer: GRPCServer<HTTP2ServerTransport.Posix>?
     private var currentPort: Int = 12345
     
-    func startServer(port: Int = 12345) async {
+    func startServer(port: Int = 12345) {
+        guard serverTask == nil else { return }
+        serverTask = Task { await serve(port: port) }
+    }
+
+    private func serve(port: Int) async {
         self.currentPort = port
         dlog("🚀 Starting gRPC server...")
         do {
@@ -48,14 +57,13 @@ final class GRPCServerManager: ObservableObject {
     }
     
     func stopServer() async {
-        if let server = self.grpcServer {
-            server.beginGracefulShutdown()
-            dlog("🛑 gRPC server stopped")
-            self.grpcServer = nil
-        } else {
-            dlog("ℹ️ gRPC server was not running")
-        }
+        serverTask?.cancel()
+        await serverTask?.value
+        serverTask = nil
+        grpcServer = nil
+        DataManager.shared.grpcServerReady = false
     }
+
 }
 
 /// Hand tracking service implementation using grpc-swift-2 SimpleServiceProtocol

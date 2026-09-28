@@ -2182,6 +2182,7 @@ final class CombinedMuJoCoManager: ObservableObject, MuJoCoManager {
     var onWebRTCPosesReceived: (([String: [Float]]) -> Void)?
     
     private var grpcServer: GRPCServer<HTTP2ServerTransport.Posix>?
+    private var serverTask: Task<Void, Never>?
     
     init() {
         updateNetworkInfo()
@@ -2227,7 +2228,12 @@ final class CombinedMuJoCoManager: ObservableObject, MuJoCoManager {
         }
     }
     
-    func startServer() async {
+    func startServer() {
+        guard serverTask == nil else { return }
+        serverTask = Task { await serve() }
+    }
+
+    private func serve() async {
         dlog("🚀 [CombinedMuJoCoManager] Starting gRPC server on port \(grpcPort)...")
         updateConnectionStatus("Starting Server...")
         isServerRunning = true
@@ -2255,15 +2261,14 @@ final class CombinedMuJoCoManager: ObservableObject, MuJoCoManager {
     }
     
     func stopServer() async {
-        if let server = grpcServer {
-            server.beginGracefulShutdown()
-            grpcServer = nil
-            isServerRunning = false
-            updateConnectionStatus("Server Stopped")
-            dlog("🛑 [CombinedMuJoCoManager] gRPC server stopped")
-        }
+        serverTask?.cancel()
+        await serverTask?.value
+        serverTask = nil
+        grpcServer = nil
+        isServerRunning = false
+        updateConnectionStatus("Server Stopped")
     }
-    
+
     private func getWiFiAddress() -> String? {
         var address: String?
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
@@ -2706,7 +2711,7 @@ private struct LifecycleModifiers: ViewModifier {
         
         videoStreamManager.start(imageData: imageData)
         
-        Task { await mujocoManager.startServer() }
+        mujocoManager.startServer()
         
         if dataManager.videoSource == .uvcCamera {
             dlog("📹 [CombinedStreamingView] UVC mode active on appear, initializing camera")
@@ -2830,11 +2835,18 @@ private struct StateChangeModifiers: ViewModifier {
                 // Trigger is only used to force RealityView update on first pose
                 // No clearing needed - transforms are continuously updated via applyMuJoCoTransforms()
             }
+            .onChange(of: dataManager.streamingRestartRequest) { _, _ in
+                Task { await restartStreaming() }
+            }
             .onChange(of: dataManager.pythonClientIP) { _, newValue in
-                if newValue == nil { handlePythonClientDisconnected() }
+                if newValue == nil && dataManager.webrtcGeneration != 0 && !dataManager.isRestartingStream {
+                    handlePythonClientDisconnected()
+                }
             }
             .onChange(of: dataManager.webrtcGeneration) { oldValue, newValue in
-                handleWebRTCGenerationChange(oldValue: oldValue, newValue: newValue)
+                if !dataManager.isRestartingStream {
+                    handleWebRTCGenerationChange(oldValue: oldValue, newValue: newValue)
+                }
             }
             .onChange(of: hasFrames) { oldValue, newValue in
                 if newValue && !oldValue {
@@ -2868,7 +2880,7 @@ private struct StateChangeModifiers: ViewModifier {
             }
             // Handle disconnection signals (from WebRTCClient/Signaling)
             .onChange(of: dataManager.connectionStatus) { _, status in
-                if status == "Peer disconnected" || status.contains("ICE disconnected") || status.contains("ICE failed") || status.contains("ICE closed") {
+                if !dataManager.isRestartingStream && (status == "Peer disconnected" || status.contains("ICE disconnected") || status.contains("ICE failed") || status.contains("ICE closed")) {
                     dlog("🔄 [CombinedStreamingView] Disconnection detected ('\(status)'), restarting VideoStreamManager...")
                     
                     // Stop with preserveForReconnect=true to keep WebRTCClient and its signaling callbacks
@@ -2921,6 +2933,22 @@ private struct StateChangeModifiers: ViewModifier {
             .onDisappear { handleOnDisappear() }
     }
     
+    @MainActor
+    private func restartStreaming() async {
+        videoStreamManager.stop(preserveForReconnect: false)
+        await GRPCServerManager.shared.stopServer()
+        await mujocoManager.stopServer()
+        resetStreamingState()
+        dataManager.pythonClientIP = nil
+        dataManager.webrtcServerInfo = nil
+        dataManager.webrtcGeneration = 0
+        dataManager.connectionStatus = "Waiting for Python client…"
+        GRPCServerManager.shared.startServer()
+        mujocoManager.startServer()
+        videoStreamManager.start(imageData: imageData)
+        dataManager.isRestartingStream = false
+    }
+
     private func handlePythonClientDisconnected() {
         dlog("🔌 [CombinedStreamingView] Python client disconnected")
         recordingManager.onVideoSourceDisconnected(reason: "Python client disconnected")
