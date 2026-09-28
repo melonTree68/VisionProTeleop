@@ -1,9 +1,42 @@
-/*.egg-info
-/dist 
-*.pyc
-build/
+# macOS and editor backups
+.DS_Store
+._*
+*.swp
+*.swo
+*.blend[0-9]*
+
+# Xcode / Swift build output and per-user workspace state
+/build/
+DerivedData/
+.build/
+xcuserdata/
+*.xcuserstate
+*.rcuserdata
+*.xcarchive/
+*.ipa
+# Accidental copies of editor state inside the asset catalog
+/Tracking Streamer/Supporting files/Assets.xcassets/RealityKitContent/.swiftpm/
+/Tracking Streamer/Supporting files/Assets.xcassets/RealityKitContent/Package/WorkspaceData/nandinithakur.dataset/
+
+# Python caches, environments, and packaging output
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+/dist/
+
+# Local recordings, downloads, and credentials
 *.mp4
-# CloudKit private key - DO NOT COMMIT
-avp_stream/datasets/eckey.pem
-*.pem
 downloads/
+*.pem
+.env
+.env.*
+!.env.example
+
+# Published HTML is tracked for deploy-docs.yml; Sphinx caches are local
+/docs/build/html/.doctrees/
+/docs/build/html/.buildinfo
