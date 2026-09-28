@@ -566,6 +566,8 @@ struct StatusOverlay: View {
                         .buttonStyle(.plain)
                     }
                     
+                    restartStreamingButton
+
                     // Exit button
                     Button {
                         dlog("🔴 [StatusView] Exit button tapped (minimized)")
@@ -583,8 +585,6 @@ struct StatusOverlay: View {
                         }
                     }
                     .buttonStyle(.plain)
-
-                    restartStreamingButton
                 }
             }
             
@@ -725,7 +725,7 @@ struct StatusOverlay: View {
 
     private var networkInfoSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8, alignment: .leading), GridItem(.flexible(), spacing: 8, alignment: .leading)], spacing: 8) {
                 ForEach(ipAddresses, id: \.address) { ip in
                     HStack(spacing: 6) {
                         Text(ip.name)
@@ -735,6 +735,7 @@ struct StatusOverlay: View {
                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                             .foregroundColor(.white)
                     }
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -829,43 +830,6 @@ struct StatusOverlay: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isConnected ? accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
         )
-    }
-    
-    private var egorecordInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Info description
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.5))
-                
-                Text("Records egocentric video and hand/head tracking. This mode requires:")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            
-            // Requirements list - horizontal layout
-            HStack(spacing: 12) {
-                requirementRow(number: "1", text: "Camera")
-                requirementRow(number: "2", text: "Dev Strap")
-                requirementRow(number: "3", text: "Cam Mount")
-            }
-            .padding(.leading, 26) // Align with text above
-        }
-    }
-    
-    private func requirementRow(number: String, text: String) -> some View {
-        HStack(spacing: 8) {
-            Text(number + ".")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.white.opacity(0.6))
-                .frame(width: 14, alignment: .leading)
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
-        }
     }
     
     // MARK: - Version Incompatibility Warning
@@ -1303,12 +1267,6 @@ struct StatusOverlay: View {
             Divider()
                 .background(Color.white.opacity(0.3))
             
-            if appMode == .egorecord {
-                egorecordInfoSection
-                Divider()
-                    .background(Color.white.opacity(0.3))
-            }
-            
             // Mode toggle (between info sections and network info)
             HStack {
                 Spacer()
@@ -1370,42 +1328,31 @@ struct StatusOverlay: View {
             Divider()
                 .background(Color.white.opacity(0.3))
 
-            Button {
+            menuItem(
+                icon: "arrow.clockwise",
+                title: dataManager.isRestartingStream ? "Restarting Streaming…" : "Restart Streaming",
+                subtitle: nil,
+                isExpanded: false,
+                accentColor: .blue,
+                showsDisclosure: false
+            ) {
                 dataManager.requestStreamingRestart()
-            } label: {
-                Label(dataManager.isRestartingStream ? "Restarting Streaming…" : "Restart Streaming", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .disabled(dataManager.isRestartingStream)
 
             // Frequently used settings
-            
-            Button {
+            menuItem(
+                icon: "gearshape.fill",
+                title: "Settings",
+                subtitle: nil,
+                isExpanded: expandedPanel != .none,
+                accentColor: .blue
+            ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     expandedPanel = expandedPanel == .none ? .settings : .none
                 }
-            } label: {
-                HStack {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(expandedPanel != .none ? .blue : .white.opacity(0.9))
-                        .frame(width: 24)
-                    Text("Settings")
-                        .font(.body)
-                        .fontWeight(.medium)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(expandedPanel != .none ? .blue : .white.opacity(0.5))
-                }
-                .foregroundColor(expandedPanel != .none ? .blue : .white.opacity(0.9))
-                .padding(.vertical, 12)
-                .padding(.horizontal, 4)
-                .background(expandedPanel != .none ? Color.blue.opacity(0.15) : Color.clear)
-                .cornerRadius(8)
             }
-            .buttonStyle(.plain)
-            
+
             // Egorecord mode: Start Recording button with requirement checks
             if appMode == .egorecord {
                 Divider()
@@ -1551,7 +1498,7 @@ struct StatusOverlay: View {
         .cornerRadius(16)
     }
     
-    private func menuItem(icon: String, title: String, subtitle: String?, isExpanded: Bool, accentColor: Color, iconColor: Color? = nil, action: @escaping () -> Void) -> some View {
+    private func menuItem(icon: String, title: String, subtitle: String?, isExpanded: Bool, accentColor: Color, iconColor: Color? = nil, showsDisclosure: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Image(systemName: icon)
@@ -1567,9 +1514,11 @@ struct StatusOverlay: View {
                         .font(.caption)
                         .foregroundColor(isExpanded ? accentColor : .white.opacity(0.6))
                 }
-                Image(systemName: isExpanded ? "chevron.right" : "chevron.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(isExpanded ? accentColor : .white.opacity(0.5))
+                if showsDisclosure {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(isExpanded ? accentColor : .white.opacity(0.5))
+                }
             }
             .foregroundColor(isExpanded ? accentColor : .white.opacity(0.9))
             .padding(.vertical, 12)
