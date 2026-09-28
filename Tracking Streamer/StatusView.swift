@@ -113,11 +113,14 @@ struct StatusOverlay: View {
     
     // App mode persistence
     @AppStorage("appMode") private var appMode: AppMode = .teleop
+    @AppStorage("useTraditionalWindow") private var useTraditionalWindow = false
     // Remember the video source used in teleop mode so we can restore it when switching back from egorecord
     @AppStorage("teleopVideoSource") private var teleopVideoSource: String = VideoSource.network.rawValue
     
     // Flashing animation for warnings
     @State private var flashingOpacity: Double = 1.0
+    @State private var warningTimer: Timer?
+    @State private var statusTimer: Timer?
     
     init(hasFrames: Binding<Bool> = .constant(false), showVideoStatus: Bool = true, isMinimized: Binding<Bool> = .constant(false), showViewControls: Binding<Bool> = .constant(false), previewZDistance: Binding<Float?> = .constant(nil), previewActive: Binding<Bool> = .constant(false), userInteracted: Binding<Bool> = .constant(false), videoMinimized: Binding<Bool> = .constant(false), videoFixed: Binding<Bool> = .constant(false), previewStatusPosition: Binding<(x: Float, y: Float)?> = .constant(nil), previewStatusActive: Binding<Bool> = .constant(false), mujocoManager: (any MuJoCoManager)? = nil) {
         self._hasFrames = hasFrames
@@ -199,14 +202,14 @@ struct StatusOverlay: View {
             dlog("🔴 [StatusView] IP Addresses: \(ipAddresses)")
             
             // Flashing animation for warnings (gentle pulse 1.5s cycle)
-            Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
+            warningTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
                 withAnimation(.easeInOut(duration: 0.75)) {
                     flashingOpacity = flashingOpacity == 1.0 ? 0.4 : 1.0
                 }
             }
             
             // Update status periodically
-            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            statusTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
                 let wasPythonConnected = pythonConnected
                 let wasWebrtcConnected = webrtcConnected
                 
@@ -263,6 +266,10 @@ struct StatusOverlay: View {
                     }
                 }
             }
+        }
+        .onDisappear {
+            warningTimer?.invalidate()
+            statusTimer?.invalidate()
         }
     }
     
@@ -1700,6 +1707,13 @@ struct StatusOverlay: View {
 
     private var moreSettingsMenuContent: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Toggle("Traditional Window", isOn: $useTraditionalWindow)
+                .tint(.blue)
+                .padding(.vertical, 8)
+
+            Divider()
+                .background(Color.white.opacity(0.2))
+
             // Video Source menu item (only in video mode)
             if showVideoStatus {
                 menuItem(

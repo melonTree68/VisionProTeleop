@@ -165,9 +165,13 @@ struct CalibrationMarkerLabelView: View {
 /// - UVC camera streaming (USB cameras via Developer Strap)
 struct CombinedStreamingView: View {
     @EnvironmentObject var imageData: ImageData
+    @EnvironmentObject private var controls: StreamingControls
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+    @AppStorage("useTraditionalWindow") private var useTraditionalWindow = false
     @StateObject private var videoStreamManager = VideoStreamManager()
     @StateObject private var appModel = 🥽AppModel()
-    @StateObject private var mujocoManager = CombinedMuJoCoManager()
+    private var mujocoManager: CombinedMuJoCoManager { controls.mujocoManager }
     @StateObject private var uvcCameraManager = UVCCameraManager.shared
     @StateObject private var recordingManager = RecordingManager.shared
     @ObservedObject private var dataManager = DataManager.shared
@@ -176,19 +180,10 @@ struct CombinedStreamingView: View {
     
     // Video state
     @State private var updateTrigger = false
-    @State private var hasFrames = false
     @State private var hasAudio = false      // Audio is streaming
     @State private var hasSimPoses = false   // Sim poses are streaming
-    @State private var isMinimized = false
-    @State private var showViewControls = false
-    @State private var previewZDistance: Float? = nil
-    @State private var previewActive = false
     @State private var hasAutoMinimized = false
-    @State private var userInteracted = false
     @State private var currentAspectRatio: Float? = nil
-    @State private var videoMinimized = false
-    @State private var previewStatusPosition: (x: Float, y: Float)? = nil
-    @State private var previewStatusActive = false
     @State private var stereoMaterialEntity: Entity? = nil
     @State private var fixedWorldTransform: Transform? = nil
     @State private var fixedMarkerTransforms: [Int: Transform] = [:]  // Per-marker fixed world transforms
@@ -258,6 +253,15 @@ struct CombinedStreamingView: View {
     
     var body: some View {
         realityViewContent
+            .onAppear { controls.isImmersiveActive = true }
+            .onDisappear { controls.isImmersiveActive = false }
+            .onChange(of: useTraditionalWindow) { _, useWindow in
+                if useWindow {
+                    openWindow(id: "mainWindow")
+                } else {
+                    dismissWindow(id: "mainWindow")
+                }
+            }
     }
     
     // MARK: - View Components
@@ -271,7 +275,7 @@ struct CombinedStreamingView: View {
                 imageData: imageData,
                 uvcFrame: $uvcFrame,
                 updateTrigger: $updateTrigger,
-                hasFrames: $hasFrames,
+                hasFrames: $controls.hasFrames,
                 currentAspectRatio: $currentAspectRatio
             ))
             .modifier(LifecycleModifiers(
@@ -283,8 +287,8 @@ struct CombinedStreamingView: View {
                 recordingManager: recordingManager,
                 imageData: imageData,
                 hasAutoMinimized: $hasAutoMinimized,
-                userInteracted: $userInteracted,
-                hasFrames: $hasFrames,
+                userInteracted: $controls.userInteracted,
+                hasFrames: $controls.hasFrames,
                 hasAudio: $hasAudio,
                 hasSimPoses: $hasSimPoses,
                 stereoMaterialEntity: $stereoMaterialEntity,
@@ -305,13 +309,13 @@ struct CombinedStreamingView: View {
                 mujocoManager: mujocoManager,
                 recordingManager: recordingManager,
                 imageData: imageData,
-                hasFrames: $hasFrames,
+                hasFrames: $controls.hasFrames,
                 hasAudio: $hasAudio,
                 hasSimPoses: $hasSimPoses,
-                videoMinimized: $videoMinimized,
+                videoMinimized: $controls.videoMinimized,
                 hasAutoMinimized: $hasAutoMinimized,
                 fixedWorldTransform: $fixedWorldTransform,
-                userInteracted: $userInteracted,
+                userInteracted: $controls.userInteracted,
                 mujocoUsdzURL: $mujocoUsdzURL,
                 mujocoEntity: $mujocoEntity,
                 mujocoBodyEntities: $mujocoBodyEntities,
@@ -346,19 +350,20 @@ struct CombinedStreamingView: View {
             setupRealityViewContent(content: content, attachments: attachments)
         } update: { updateContent, attachments in
             let _ = updateTrigger
+            let _ = useTraditionalWindow
             let _ = dataManager.videoPlaneZDistance
             let _ = dataManager.videoPlaneYPosition
             let _ = dataManager.videoPlaneScale  // Trigger update when scale changes
             let _ = dataManager.stereoBaselineOffset // Trigger update when baseline offset changes
             let _ = dataManager.videoPlaneAutoPerpendicular
             let _ = dataManager.videoPlaneFixedToWorld
-            let _ = previewZDistance
+            let _ = controls.previewZDistance
             let _ = currentAspectRatio
             let _ = dataManager.statusMinimizedXPosition
             let _ = dataManager.statusMinimizedYPosition
-            let _ = previewStatusPosition
-            let _ = previewStatusActive
-            let _ = isMinimized
+            let _ = controls.previewStatusPosition
+            let _ = controls.previewStatusActive
+            let _ = controls.isMinimized
             let _ = mujocoPoseUpdateTrigger
             let _ = mujocoEntity  // Trigger update when model is loaded
             let _ = dataManager.showHeadBeam  // Trigger update when head beam visibility changes
@@ -384,8 +389,8 @@ struct CombinedStreamingView: View {
                 
                 let framesAvailable = imageData.left != nil && imageData.right != nil
                 let isFixed = dataManager.videoPlaneFixedToWorld
-                let shouldShowPreview = previewZDistance != nil || previewActive
-                let targetZ = previewZDistance ?? dataManager.videoPlaneZDistance
+                let shouldShowPreview = controls.previewZDistance != nil || controls.previewActive
+                let targetZ = controls.previewZDistance ?? dataManager.videoPlaneZDistance
                 let targetY = dataManager.videoPlaneYPosition
                 
                 if isFixed {
@@ -491,19 +496,19 @@ struct CombinedStreamingView: View {
                     skyBox.components[ModelComponent.self]?.mesh = newMesh
                     previewEntity?.components[ModelComponent.self]?.mesh = newMesh
                     
-                    skyBox.isEnabled = !videoMinimized
+                    skyBox.isEnabled = !controls.videoMinimized
                     
-                    if !hasFrames {
+                    if !controls.hasFrames {
                         // Mark that we received the first frame
                         // Use Task to ensure state updates are properly committed
                         Task { @MainActor in
-                            if !hasFrames {  // Double-check to avoid duplicate triggers
-                                hasFrames = true
+                            if !controls.hasFrames {  // Double-check to avoid duplicate triggers
+                                controls.hasFrames = true
                                 // Audio comes with the same WebRTC connection, so mark it as ready too
                                 if dataManager.audioEnabled && !isUVCMode {
                                     hasAudio = true
                                 }
-                                dlog("🎬 [CombinedStreamingView] First video frame received (source: \(isUVCMode ? "UVC" : "Network")), hasFrames=\(hasFrames)")
+                                dlog("🎬 [CombinedStreamingView] First video frame received (source: \(isUVCMode ? "UVC" : "Network")), controls.hasFrames=\(controls.hasFrames)")
                                 // Small delay to ensure state is fully committed
                                 try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
                                 dlog("🎬 [CombinedStreamingView] Checking auto-minimize after delay")
@@ -630,9 +635,9 @@ struct CombinedStreamingView: View {
                     }
                 } else {
                     skyBoxEntity?.isEnabled = false
-                    // Only reset hasFrames if we were showing frames before
-                    if hasFrames && !isUVCMode {
-                        hasFrames = false
+                    // Only reset controls.hasFrames if we were showing frames before
+                    if controls.hasFrames && !isUVCMode {
+                        controls.hasFrames = false
                     }
                 }
             }
@@ -640,8 +645,9 @@ struct CombinedStreamingView: View {
             // === STATUS UPDATE ===
             if let statusAnchor = updateContent.entities.first(where: { $0.name == "statusHeadAnchor" }) as? AnchorEntity {
                 if let statusContainer = statusAnchor.children.first(where: { $0.name == "statusContainer" }) {
+                    statusContainer.isEnabled = !useTraditionalWindow
                     let targetTranslation: SIMD3<Float>
-                    if isMinimized {
+                    if controls.isMinimized {
                         targetTranslation = SIMD3<Float>(
                             dataManager.statusMinimizedXPosition,
                             dataManager.statusMinimizedYPosition,
@@ -656,10 +662,10 @@ struct CombinedStreamingView: View {
                 }
                 
                 if let statusPreviewContainer = statusAnchor.children.first(where: { $0.name == "statusPreviewContainer" }) {
-                    let shouldShowPreview = previewStatusPosition != nil || previewStatusActive
+                    let shouldShowPreview = !useTraditionalWindow && (controls.previewStatusPosition != nil || controls.previewStatusActive)
                     if shouldShowPreview {
-                        let xPos = previewStatusPosition?.x ?? dataManager.statusMinimizedXPosition
-                        let yPos = previewStatusPosition?.y ?? dataManager.statusMinimizedYPosition
+                        let xPos = controls.previewStatusPosition?.x ?? dataManager.statusMinimizedXPosition
+                        let yPos = controls.previewStatusPosition?.y ?? dataManager.statusMinimizedYPosition
                         statusPreviewContainer.isEnabled = true
                         var previewTransform = statusPreviewContainer.transform
                         previewTransform.translation = SIMD3<Float>(xPos, yPos, -1.0)
@@ -1133,23 +1139,8 @@ struct CombinedStreamingView: View {
     @AttachmentContentBuilder
     private var statusAttachments: some AttachmentContent {
         Attachment(id: "status") {
-            StatusOverlay(
-                hasFrames: $hasFrames,
-                showVideoStatus: true,
-                isMinimized: $isMinimized,
-                showViewControls: $showViewControls,
-                previewZDistance: $previewZDistance,
-                previewActive: $previewActive,
-                userInteracted: $userInteracted,
-                videoMinimized: $videoMinimized,
-                videoFixed: Binding(
-                    get: { dataManager.videoPlaneFixedToWorld },
-                    set: { newValue in dataManager.videoPlaneFixedToWorld = newValue }
-                ),
-                previewStatusPosition: $previewStatusPosition,
-                previewStatusActive: $previewStatusActive,
-                mujocoManager: mujocoManager
-            )
+            StreamingControlsView()
+                .environmentObject(controls)
         }
         
         Attachment(id: "statusPreview") {
@@ -1466,6 +1457,7 @@ struct CombinedStreamingView: View {
         
         let statusContainer = Entity()
         statusContainer.name = "statusContainer"
+        statusContainer.isEnabled = !useTraditionalWindow
         statusContainer.setParent(statusAnchor)
         statusContainer.transform.translation = SIMD3<Float>(0.0, 0.0, -1.0)
         
@@ -1549,7 +1541,7 @@ struct CombinedStreamingView: View {
     
     /// Check if all required streams are ready and auto-minimize if conditions are met
     private func tryAutoMinimize() {
-        guard !hasAutoMinimized && !userInteracted else { return }
+        guard !hasAutoMinimized && !controls.userInteracted else { return }
         
         let dm = DataManager.shared
         
@@ -1559,8 +1551,8 @@ struct CombinedStreamingView: View {
         // - If audio is enabled: need audio coming in (or frames if video+audio)
         
         let simReady = !dm.simEnabled || (hasSimPoses && dm.usdzSceneLoaded)
-        let videoReady = !dm.videoEnabled || hasFrames
-        let audioReady = !dm.audioEnabled || hasAudio || (dm.videoEnabled && hasFrames)
+        let videoReady = !dm.videoEnabled || controls.hasFrames
+        let audioReady = !dm.audioEnabled || hasAudio || (dm.videoEnabled && controls.hasFrames)
         
         let allReady = simReady && videoReady && audioReady
         let somethingEnabled = dm.simEnabled || dm.videoEnabled || dm.audioEnabled
@@ -1571,11 +1563,11 @@ struct CombinedStreamingView: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second delay
                 // Re-check conditions after delay
                 let stillReady = (!dm.simEnabled || (hasSimPoses && dm.usdzSceneLoaded)) &&
-                                 (!dm.videoEnabled || hasFrames) &&
-                                 (!dm.audioEnabled || hasAudio || (dm.videoEnabled && hasFrames))
-                if !hasAutoMinimized && !userInteracted && stillReady {
+                                 (!dm.videoEnabled || controls.hasFrames) &&
+                                 (!dm.audioEnabled || hasAudio || (dm.videoEnabled && controls.hasFrames))
+                if !hasAutoMinimized && !controls.userInteracted && stillReady {
                     withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                        isMinimized = true
+                        controls.isMinimized = true
                         hasAutoMinimized = true
                     }
                 }

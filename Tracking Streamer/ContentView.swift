@@ -7,31 +7,89 @@ func dlog(_ msg: @autoclosure () -> String) {
     #endif
 }
 
+/// State shared by the head-attached controls and the movable system window.
+@MainActor
+final class StreamingControls: ObservableObject {
+    @Published var hasFrames = false
+    @Published var isMinimized = false
+    @Published var showViewControls = false
+    @Published var previewZDistance: Float?
+    @Published var previewActive = false
+    @Published var userInteracted = false
+    @Published var videoMinimized = false
+    @Published var previewStatusPosition: (x: Float, y: Float)?
+    @Published var previewStatusActive = false
+    @Published var isImmersiveActive = false
+    let mujocoManager = CombinedMuJoCoManager()
+}
+
+struct StreamingControlsView: View {
+    @EnvironmentObject private var controls: StreamingControls
+    @ObservedObject private var dataManager = DataManager.shared
+
+    var body: some View {
+        StatusOverlay(
+            hasFrames: $controls.hasFrames,
+            showVideoStatus: true,
+            isMinimized: $controls.isMinimized,
+            showViewControls: $controls.showViewControls,
+            previewZDistance: $controls.previewZDistance,
+            previewActive: $controls.previewActive,
+            userInteracted: $controls.userInteracted,
+            videoMinimized: $controls.videoMinimized,
+            videoFixed: $dataManager.videoPlaneFixedToWorld,
+            previewStatusPosition: $controls.previewStatusPosition,
+            previewStatusActive: $controls.previewStatusActive,
+            mujocoManager: controls.mujocoManager
+        )
+    }
+}
+
 struct ContentView: View {
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @Environment(\.dismissWindow) private var dismissWindow
+    @EnvironmentObject private var controls: StreamingControls
+    @AppStorage("useTraditionalWindow") private var useTraditionalWindow = false
     @State private var startupError: String?
 
     var body: some View {
-        VStack(spacing: 16) {
-            if let startupError {
-                Text(startupError)
-                Button("Retry") {
-                    Task { await startStreaming() }
-                }
+        Group {
+            if controls.isImmersiveActive {
+                StreamingControlsView()
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                ProgressView("Starting streaming…")
+                VStack(spacing: 16) {
+                    if let startupError {
+                        Text(startupError)
+                        Button("Retry") {
+                            Task { await startStreaming() }
+                        }
+                    } else {
+                        ProgressView("Starting streaming…")
+                    }
+                }
+                .padding(32)
             }
         }
-        .padding(32)
-        .task { await startStreaming() }
+        .task {
+            if !controls.isImmersiveActive {
+                await startStreaming()
+            }
+        }
+        .onChange(of: controls.isImmersiveActive) { _, active in
+            if !active { startupError = "The streaming space was closed." }
+        }
+        .onDisappear {
+            // Closing the movable controls restores the in-space controls.
+            if controls.isImmersiveActive { useTraditionalWindow = false }
+        }
     }
 
     private func startStreaming() async {
         startupError = nil
         switch await openImmersiveSpace(id: "combinedStreamSpace") {
         case .opened:
-            dismissWindow()
+            if !useTraditionalWindow { dismissWindow(id: "mainWindow") }
         case .userCancelled:
             startupError = "Streaming was cancelled."
         case .error:

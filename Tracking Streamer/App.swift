@@ -4,10 +4,12 @@ import SwiftUI
 struct VisionProTeleopApp: App {
     @StateObject private var imageData = ImageData()
     @StateObject private var appModel = 🥽AppModel()
+    @StateObject private var controls = StreamingControls()
     
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "mainWindow") {
             ContentView()
+                .environmentObject(controls)
         }
         .windowResizability(.contentSize)
         
@@ -31,6 +33,7 @@ struct VisionProTeleopApp: App {
         ImmersiveSpace(id: "combinedStreamSpace") {
             CombinedStreamingView()
                 .environmentObject(imageData)
+                .environmentObject(controls)
         }
     }
     
